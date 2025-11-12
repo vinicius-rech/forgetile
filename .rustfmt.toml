@@ -1,0 +1,92 @@
+# ===============================
+# GENERAL FORMATTING
+# ===============================
+
+# Maximum line width (in characters)
+max_width = 99
+
+# Indent with 4 spaces (Rust idiomatic standard)
+tab_spaces = 4
+
+# Keep a consistent style across files
+edition = "2024"
+
+
+# ===============================
+# LINE BREAKS AND CALLS
+# ===============================
+
+# Force long function calls to use multiple lines
+fn_call_width = 80
+fn_call_style = "Block"
+
+# Keep function arguments on separate lines when exceeding the limit
+args_layout = "Compressed"
+
+# Same behavior for structs and tuples
+struct_lit_width = 40
+struct_lit_style = "Block"
+array_width = 40
+array_layout = "Vertical"
+chain_width = 40
+
+# ===============================
+# EXPRESSION FORMATTING
+# ===============================
+
+# Keep the operator on a separate line when breaking
+binop_separator = "Front"
+
+# Break long expressions into multiple lines
+use_small_heuristics = "Off"
+
+# Force a line break after `=` in long assignments
+overflow_delimited_expr = true
+
+
+# ===============================
+# PUNCTUATION AND PARENTHESES STYLE
+# ===============================
+
+# Always add a trailing comma in multiline calls and lists
+trailing_comma = "Always"
+
+# Remove unnecessary parentheses
+remove_nested_parens = true
+
+# ===============================
+# IMPORTS AND MODULE ORGANIZATION
+# ===============================
+
+# Automatically sort imports
+reorder_imports = true
+
+# Sort module declarations (useful for consistency)
+reorder_modules = true
+
+# Keep groups of imports separated
+group_imports = "StdExternalCrate"
+
+
+# ===============================
+# OTHER USEFUL SETTINGS
+# ===============================
+
+# Add a blank line between functions
+blank_lines_lower_bound = 1
+blank_lines_upper_bound = 1
+
+# Ensure consistent indentation in blocks
+indent_style = "Block"
+
+# Remove duplicate blank lines
+normalize_comments = true
+wrap_comments = true
+
+# Apply the same line-breaking logic for function declarations
+fn_args_layout = "Compressed"
+fn_args_density = "Compressed"
+fn_params_layout = "Compressed"
+
+# Limit to force line break in long parameters
+fn_args_width = 80
