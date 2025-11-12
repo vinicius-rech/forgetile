@@ -11,9 +11,9 @@ pub struct TileTexture {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-pub struct Dimensions {
-    pub width: u32,
-    pub height: u32,
+pub struct Size {
+    pub width: f32,
+    pub height: f32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -23,7 +23,7 @@ pub struct Collider {
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Tile {
-    dimensions: Dimensions,
+    dimensions: Size,
     texture: TileTexture,
     position: Position,
     collider: Collider,
