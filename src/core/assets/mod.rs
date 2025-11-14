@@ -10,6 +10,7 @@ use crate::core::map::tile::Size;
 
 #[derive(Clone)]
 pub struct TileSprite {
+    pub id: String,
     pub name: String,
     pub texture: Texture2D,
 }
@@ -64,6 +65,13 @@ impl AssetCatalog {
 
     pub fn is_empty(&self) -> bool {
         self.categories.is_empty()
+    }
+
+    pub fn sprite_by_id(&self, id: &str) -> Option<&TileSprite> {
+        self.categories
+            .iter()
+            .flat_map(|category| category.tiles.iter())
+            .find(|sprite| sprite.id == id)
     }
 }
 
@@ -161,7 +169,11 @@ async fn load_tiles_from_image(path: &Path, tile_size: Size) -> Option<Vec<TileS
             texture.set_filter(FilterMode::Nearest);
 
             let label = format!("{}_{:02}", file_stem, row * columns + col);
-            sprites.push(TileSprite { name: label, texture });
+            let canonical_path = path
+                .canonicalize()
+                .unwrap_or_else(|_| path.to_path_buf());
+            let id = format!("{}::{}", canonical_path.display(), row * columns + col);
+            sprites.push(TileSprite { id, name: label, texture });
         }
     }
 

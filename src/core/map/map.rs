@@ -1,3 +1,4 @@
+use crate::core::assets::{AssetCatalog, TileSprite};
 use crate::core::map::tile::Size;
 use macroquad::camera::{Camera2D, set_camera, set_default_camera};
 use macroquad::color::{Color, GRAY, WHITE};
@@ -9,6 +10,10 @@ use macroquad::shapes::{draw_line, draw_rectangle};
 use macroquad::texture::{DrawTextureParams, Texture2D, draw_texture_ex};
 use macroquad::time::get_frame_time;
 use macroquad::window::{screen_height, screen_width};
+use serde::{Deserialize, Serialize};
+use std::fs;
+use std::io;
+use std::path::Path;
 
 pub struct Map {
     tile_dimensions: Size,
@@ -23,6 +28,7 @@ pub struct Map {
 #[derive(Clone)]
 struct PaintedTile {
     texture: Texture2D,
+    tile_id: String,
 }
 
 impl Map {
@@ -172,9 +178,12 @@ impl Map {
         Some((tile_x, tile_y))
     }
 
-    pub fn paint_tile(&mut self, tile_x: usize, tile_y: usize, texture: Texture2D) {
+    pub fn paint_tile(&mut self, tile_x: usize, tile_y: usize, sprite: &TileSprite) {
         if let Some(index) = self.tile_index(tile_x, tile_y) {
-            self.tiles[index] = Some(PaintedTile { texture });
+            self.tiles[index] = Some(PaintedTile {
+                texture: sprite.texture.clone(),
+                tile_id: sprite.id.clone(),
+            });
         }
     }
 
@@ -250,6 +259,65 @@ impl Map {
     fn view_size(&self) -> Vec2 {
         vec2(screen_width() / self.zoom_level, screen_height() / self.zoom_level)
     }
+
+    pub fn save_to_file<P: AsRef<Path>>(&self, path: P) -> Result<(), io::Error> {
+        let export = self.export();
+        let json = serde_json::to_string_pretty(&export)
+            .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
+        fs::write(path, json)
+    }
+
+    pub fn load_from_file<P: AsRef<Path>>(
+        &mut self, path: P, catalog: &AssetCatalog,
+    ) -> Result<(), MapLoadError> {
+        let data = fs::read_to_string(path).map_err(MapLoadError::Io)?;
+        let export: MapExport = serde_json::from_str(&data).map_err(MapLoadError::Parse)?;
+
+        let expected = export.width * export.height;
+        if export.tiles.len() != expected {
+            return Err(MapLoadError::TileCountMismatch { expected, found: export.tiles.len() });
+        }
+
+        self.tile_dimensions = Size {
+            width: export.tile_width,
+            height: export.tile_height,
+        };
+        self.map_width_tiles = export.width;
+        self.map_height_tiles = export.height;
+        self.tiles = vec![None; expected];
+
+        for (index, tile_id_opt) in export.tiles.into_iter().enumerate() {
+            if let Some(tile_id) = tile_id_opt {
+                let sprite = catalog
+                    .sprite_by_id(&tile_id)
+                    .ok_or_else(|| MapLoadError::UnknownTile(tile_id.clone()))?;
+                self.tiles[index] = Some(PaintedTile { texture: sprite.texture.clone(), tile_id });
+            }
+        }
+
+        self.camera_center = self.grid_size() / 2.0;
+        self.clamp_camera_center();
+        Ok(())
+    }
+
+    fn export(&self) -> MapExport {
+        let tiles = self
+            .tiles
+            .iter()
+            .map(|tile| {
+                tile.as_ref()
+                    .map(|painted| painted.tile_id.clone())
+            })
+            .collect();
+
+        MapExport {
+            width: self.map_width_tiles,
+            height: self.map_height_tiles,
+            tile_width: self.tile_dimensions.width,
+            tile_height: self.tile_dimensions.height,
+            tiles,
+        }
+    }
 }
 
 fn dimension_to_tiles(value: f32) -> usize {
@@ -263,4 +331,51 @@ fn clamp_component(center: f32, grid_extent: f32, view_extent: f32) -> f32 {
     } else {
         center.clamp(half_view, grid_extent - half_view)
     }
+}
+
+#[derive(Debug)]
+pub enum MapLoadError {
+    Io(io::Error),
+    Parse(serde_json::Error),
+    TileCountMismatch {
+        expected: usize,
+        found: usize,
+    },
+    UnknownTile(String),
+}
+
+impl From<io::Error> for MapLoadError {
+    fn from(value: io::Error) -> Self {
+        MapLoadError::Io(value)
+    }
+}
+
+impl From<serde_json::Error> for MapLoadError {
+    fn from(value: serde_json::Error) -> Self {
+        MapLoadError::Parse(value)
+    }
+}
+
+impl std::fmt::Display for MapLoadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MapLoadError::Io(err) => write!(f, "IO error: {err}"),
+            MapLoadError::Parse(err) => write!(f, "JSON parse error: {err}"),
+            MapLoadError::TileCountMismatch { expected, found } => {
+                write!(f, "Tile count mismatch. Expected {expected}, found {found}")
+            }
+            MapLoadError::UnknownTile(id) => write!(f, "Unknown tile id: {id}"),
+        }
+    }
+}
+
+impl std::error::Error for MapLoadError {}
+
+#[derive(Serialize, Deserialize)]
+struct MapExport {
+    width: usize,
+    height: usize,
+    tile_width: f32,
+    tile_height: f32,
+    tiles: Vec<Option<String>>,
 }

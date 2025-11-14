@@ -4,19 +4,27 @@ use crate::core::map::tile::Size;
 use macroquad::color::{BLACK, DARKGRAY, WHITE};
 use macroquad::input::{MouseButton, is_mouse_button_down, mouse_position};
 use macroquad::math::{Rect, Vec2, vec2};
-use macroquad::prelude::clear_background;
+use macroquad::prelude::{Camera2D, clear_background};
 use macroquad::text::draw_text;
 use macroquad::ui::{Ui, hash, root_ui, widgets};
-use macroquad::window::{next_frame, screen_height};
+use macroquad::window::{Conf, next_frame, screen_height};
 
 mod core;
 
-#[macroquad::main("ForgeTile")]
+fn window_conf() -> Conf {
+    Conf {
+        window_title: "ForgeTile".into(),
+        fullscreen: false,
+        ..Default::default()
+    }
+}
+
+#[macroquad::main(window_conf)]
 async fn main() {
     let map_dimension = Size { width: 100.0, height: 100.0 };
     let tile_size = Size { width: 32.0, height: 32.0 };
-    let mut map = Map::new(map_dimension, tile_size);
     let asset_catalog = AssetCatalog::load(tile_size).await;
+    let mut map = Map::new(map_dimension, tile_size);
     let mut palette_panel = PalettePanel::new(tile_size);
 
     loop {
@@ -24,15 +32,28 @@ async fn main() {
 
         draw_text("ForgeTile!", 20.0, 20.0, 30.0, DARKGRAY);
 
-        let camera = map.draw();
+        let camera: Camera2D = map.draw();
 
-        palette_panel.draw(&asset_catalog);
+        let panel_actions = palette_panel.draw(&asset_catalog);
 
         if is_mouse_button_down(MouseButton::Left) && !palette_panel.pointer_over_ui() {
             if let (Some((tile_x, tile_y)), Some(sprite)) =
                 (map.hovered_tile(&camera), palette_panel.selected_sprite(&asset_catalog))
             {
-                map.paint_tile(tile_x, tile_y, sprite.texture.clone());
+                map.paint_tile(tile_x, tile_y, sprite);
+            }
+        }
+
+        if panel_actions.save_requested {
+            match map.save_to_file("map.json") {
+                Ok(_) => println!("Mapa salvo em map.json"),
+                Err(err) => eprintln!("Erro ao salvar mapa: {err}"),
+            }
+        }
+        if panel_actions.load_requested {
+            match map.load_from_file("map.json", &asset_catalog) {
+                Ok(_) => println!("Mapa carregado de map.json"),
+                Err(err) => eprintln!("Erro ao carregar mapa: {err}"),
             }
         }
 
@@ -76,7 +97,8 @@ impl PalettePanel {
         }
     }
 
-    fn draw(&mut self, catalog: &AssetCatalog) {
+    fn draw(&mut self, catalog: &AssetCatalog) -> PanelActions {
+        let mut actions = PanelActions::default();
         self.ensure_selection_bounds(catalog);
         let panel_height = (screen_height() - 60.0).max(260.0);
         let panel_size = vec2(280.0, panel_height);
@@ -120,10 +142,19 @@ impl PalettePanel {
                     self.draw_tile_grid(ui, category);
                 }
             }
+
+            ui.separator();
+            if ui.button(None, "Salvar mapa (JSON)") {
+                actions.save_requested = true;
+            }
+            if ui.button(None, "Carregar mapa (JSON)") {
+                actions.load_requested = true;
+            }
         });
 
         let (mouse_x, mouse_y) = mouse_position();
         self.pointer_over_ui = rect.contains(vec2(mouse_x, mouse_y));
+        actions
     }
 
     fn draw_tile_grid(&mut self, ui: &mut Ui, category: &AssetCategory) {
@@ -184,4 +215,10 @@ impl PalettePanel {
             self.selected_tile = None;
         }
     }
+}
+
+#[derive(Default)]
+struct PanelActions {
+    save_requested: bool,
+    load_requested: bool,
 }
