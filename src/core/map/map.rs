@@ -69,17 +69,29 @@ impl Map {
         self.zoom_level
     }
 
+    pub fn increase_zoom(&mut self) {
+        self.zoom_level = (self.zoom_level * 1.2).min(8.0);
+    }
+
+    pub fn decrease_zoom(&mut self) {
+        self.zoom_level = (self.zoom_level / 1.2).max(0.5);
+    }
+
+    pub fn reset_zoom(&mut self) {
+        self.zoom_level = 2.0;
+    }
+
     pub fn update_zoom(&mut self) {
         if is_key_pressed(KeyCode::Equal) {
-            self.zoom_level = (self.zoom_level * 1.2).min(8.0);
+            self.increase_zoom();
         }
 
         if is_key_pressed(KeyCode::Minus) {
-            self.zoom_level = (self.zoom_level / 1.2).max(0.5);
+            self.decrease_zoom();
         }
 
         if is_key_pressed(KeyCode::Key0) {
-            self.zoom_level = 2.0;
+            self.reset_zoom();
         }
     }
 
