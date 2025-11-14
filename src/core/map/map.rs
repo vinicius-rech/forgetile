@@ -1,28 +1,24 @@
 use crate::core::assets::{AssetCatalog, TileSprite};
+use crate::core::camera::{AxisPosition, CameraController};
 use crate::core::map::tile::Size;
 use macroquad::camera::{Camera2D, set_camera, set_default_camera};
 use macroquad::color::{Color, GRAY, WHITE};
-use macroquad::input::{
-    KeyCode, MouseButton, is_key_down, is_key_pressed, is_mouse_button_down, mouse_position,
-};
-use macroquad::math::{Rect, Vec2, vec2};
+use macroquad::input::mouse_position;
+use macroquad::math::{Vec2, vec2};
 use macroquad::shapes::{draw_line, draw_rectangle};
 use macroquad::texture::{DrawTextureParams, Texture2D, draw_texture_ex};
-use macroquad::time::get_frame_time;
-use macroquad::window::{screen_height, screen_width};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io;
 use std::path::Path;
 
+/// Runtime representation of the editable tile map.
 pub struct Map {
-    tile_dimensions: Size,
-    zoom_level: f32,
-    map_width_tiles: usize,
-    map_height_tiles: usize,
+    camera_controller: CameraController,
     tiles: Vec<Option<PaintedTile>>,
-    camera_center: Vec2,
-    last_drag_position: Option<Vec2>,
+    map_height_tiles: usize,
+    map_width_tiles: usize,
+    tile_dimensions: Size,
 }
 
 #[derive(Clone)]
@@ -32,83 +28,53 @@ struct PaintedTile {
 }
 
 impl Map {
+    /// Creates a map with the provided pixel dimensions and tile size.
     pub fn new(map_dimension: Size, tile_size: Size) -> Self {
         let map_width_tiles: usize = dimension_to_tiles(map_dimension.width);
         let map_height_tiles: usize = dimension_to_tiles(map_dimension.height);
-        let tiles = vec![None; map_width_tiles * map_height_tiles];
-        let grid_size = vec2(
+        let tiles: Vec<Option<PaintedTile>> = vec![None; map_width_tiles * map_height_tiles];
+
+        let grid_size: Vec2 = vec2(
             map_width_tiles as f32 * tile_size.width,
             map_height_tiles as f32 * tile_size.height,
         );
-        let camera_center = grid_size / 2.0;
+
+        let camera_center: AxisPosition = grid_size.into();
 
         Self {
+            camera_controller: CameraController::new(camera_center),
             tile_dimensions: tile_size,
-            zoom_level: 2.0,
             map_width_tiles,
             map_height_tiles,
             tiles,
-            camera_center,
-            last_drag_position: None,
         }
     }
 
+    /// Returns an immutable reference to the camera controller.
+    pub fn get_camera_controller(&self) -> &CameraController {
+        &self.camera_controller
+    }
+
+    /// Returns a mutable reference to the camera controller.
+    pub fn get_camera_controller_mut(&mut self) -> &mut CameraController {
+        &mut self.camera_controller
+    }
+
+    /// Draws the map contents and returns the active camera used for the draw call.
     pub fn draw(&mut self) -> Camera2D {
-        self.update_zoom();
-        self.update_camera_pan();
-        self.clamp_camera_center();
-        let camera = self.setup_camera();
+        let grid_size = self.grid_size();
+
+        self.camera_controller.update(grid_size);
+
+        let camera = self.camera_controller.to_camera2d();
+        set_camera(&camera);
+
         self.draw_tiles();
         self.setup_grid();
         self.highlight_hovered_tile(&camera);
+
         set_default_camera();
         camera
-    }
-
-    pub fn current_zoom_level(&self) -> f32 {
-        self.zoom_level
-    }
-
-    pub fn increase_zoom(&mut self) {
-        self.zoom_level = (self.zoom_level * 1.2).min(8.0);
-    }
-
-    pub fn decrease_zoom(&mut self) {
-        self.zoom_level = (self.zoom_level / 1.2).max(0.5);
-    }
-
-    pub fn reset_zoom(&mut self) {
-        self.zoom_level = 2.0;
-    }
-
-    pub fn update_zoom(&mut self) {
-        if is_key_pressed(KeyCode::Equal) {
-            self.increase_zoom();
-        }
-
-        if is_key_pressed(KeyCode::Minus) {
-            self.decrease_zoom();
-        }
-
-        if is_key_pressed(KeyCode::Key0) {
-            self.reset_zoom();
-        }
-    }
-
-    fn setup_camera(&self) -> Camera2D {
-        let view_size = self.view_size();
-
-        let rect = Rect {
-            x: self.camera_center.x - view_size.x / 2.0,
-            y: self.camera_center.y - view_size.y / 2.0,
-            w: view_size.x,
-            h: view_size.y,
-        };
-
-        let camera_options = Camera2D::from_display_rect(rect);
-
-        set_camera(&camera_options);
-        camera_options
     }
 
     fn setup_grid(&self) {
@@ -162,6 +128,7 @@ impl Map {
         }
     }
 
+    /// Returns the `(x, y)` tile coordinates currently under the mouse cursor.
     pub fn hovered_tile(&self, camera: &Camera2D) -> Option<(usize, usize)> {
         let (mouse_x, mouse_y) = mouse_position();
         let mouse_screen = vec2(mouse_x, mouse_y);
@@ -187,6 +154,7 @@ impl Map {
         Some((tile_x, tile_y))
     }
 
+    /// Paints a tile slot with the sprite, replacing any previous texture.
     pub fn paint_tile(&mut self, tile_x: usize, tile_y: usize, sprite: &TileSprite) {
         if let Some(index) = self.tile_index(tile_x, tile_y) {
             self.tiles[index] = Some(PaintedTile {
@@ -204,60 +172,6 @@ impl Map {
         Some(tile_y * self.map_width_tiles + tile_x)
     }
 
-    fn update_camera_pan(&mut self) {
-        self.update_mouse_pan();
-        self.update_keyboard_pan();
-    }
-
-    fn update_mouse_pan(&mut self) {
-        let (mouse_x, mouse_y) = mouse_position();
-        let current = vec2(mouse_x, mouse_y);
-
-        if is_mouse_button_down(MouseButton::Right) {
-            if let Some(last) = self.last_drag_position {
-                let delta_screen = current - last;
-                let delta_world = delta_screen / self.zoom_level;
-                if delta_world.length_squared() > 0.0 {
-                    self.camera_center += delta_world;
-                    self.clamp_camera_center();
-                }
-            }
-            self.last_drag_position = Some(current);
-        } else {
-            self.last_drag_position = None;
-        }
-    }
-
-    fn update_keyboard_pan(&mut self) {
-        let mut direction = vec2(0.0, 0.0);
-
-        if is_key_down(KeyCode::W) {
-            direction.y += 1.0;
-        }
-        if is_key_down(KeyCode::S) {
-            direction.y -= 1.0;
-        }
-        if is_key_down(KeyCode::A) {
-            direction.x -= 1.0;
-        }
-        if is_key_down(KeyCode::D) {
-            direction.x += 1.0;
-        }
-
-        if direction.length_squared() > 0.0 {
-            let delta = direction.normalize() * 600.0 * get_frame_time();
-            self.camera_center += delta;
-        }
-    }
-
-    fn clamp_camera_center(&mut self) {
-        let grid_size = self.grid_size();
-        let view_size = self.view_size();
-
-        self.camera_center.x = clamp_component(self.camera_center.x, grid_size.x, view_size.x);
-        self.camera_center.y = clamp_component(self.camera_center.y, grid_size.y, view_size.y);
-    }
-
     fn grid_size(&self) -> Vec2 {
         vec2(
             self.map_width_tiles as f32 * self.tile_dimensions.width,
@@ -265,10 +179,7 @@ impl Map {
         )
     }
 
-    fn view_size(&self) -> Vec2 {
-        vec2(screen_width() / self.zoom_level, screen_height() / self.zoom_level)
-    }
-
+    /// Writes the current map state to disk in JSON format.
     pub fn save_to_file<P: AsRef<Path>>(&self, path: P) -> Result<(), io::Error> {
         let export = self.export();
         let json = serde_json::to_string_pretty(&export)
@@ -276,36 +187,47 @@ impl Map {
         fs::write(path, json)
     }
 
+    /// Loads map data from disk and rebuilds the internal tile buffers.
     pub fn load_from_file<P: AsRef<Path>>(
         &mut self, path: P, catalog: &AssetCatalog,
     ) -> Result<(), MapLoadError> {
-        let data = fs::read_to_string(path).map_err(MapLoadError::Io)?;
-        let export: MapExport = serde_json::from_str(&data).map_err(MapLoadError::Parse)?;
+        let data = fs::read_to_string(path)?;
+        let export: MapExport = serde_json::from_str(&data)?;
 
-        let expected = export.width * export.height;
-        if export.tiles.len() != expected {
-            return Err(MapLoadError::TileCountMismatch { expected, found: export.tiles.len() });
+        let expected_tile_count = export.width * export.height;
+        if export.tiles.len() != expected_tile_count {
+            return Err(MapLoadError::TileCountMismatch {
+                expected: expected_tile_count,
+                found: export.tiles.len(),
+            });
         }
 
+        self.map_width_tiles = export.width;
+        self.map_height_tiles = export.height;
         self.tile_dimensions = Size {
             width: export.tile_width,
             height: export.tile_height,
         };
-        self.map_width_tiles = export.width;
-        self.map_height_tiles = export.height;
-        self.tiles = vec![None; expected];
 
-        for (index, tile_id_opt) in export.tiles.into_iter().enumerate() {
-            if let Some(tile_id) = tile_id_opt {
-                let sprite = catalog
-                    .sprite_by_id(&tile_id)
-                    .ok_or_else(|| MapLoadError::UnknownTile(tile_id.clone()))?;
-                self.tiles[index] = Some(PaintedTile { texture: sprite.texture.clone(), tile_id });
-            }
-        }
+        self.tiles = export
+            .tiles
+            .into_iter()
+            .map(|maybe_id| match maybe_id {
+                Some(id) => {
+                    let sprite = catalog
+                        .sprite_by_id(&id)
+                        .ok_or_else(|| MapLoadError::UnknownTile(id.clone()))?;
+                    Ok(Some(PaintedTile {
+                        texture: sprite.texture.clone(),
+                        tile_id: sprite.id.clone(),
+                    }))
+                }
+                None => Ok(None),
+            })
+            .collect::<Result<Vec<_>, MapLoadError>>()?;
 
-        self.camera_center = self.grid_size() / 2.0;
-        self.clamp_camera_center();
+        self.camera_controller.screen_center = self.grid_size().into();
+
         Ok(())
     }
 
@@ -329,19 +251,12 @@ impl Map {
     }
 }
 
+/// Converts a raw dimension into an integral number of tiles.
 fn dimension_to_tiles(value: f32) -> usize {
     value.max(1.0).round() as usize
 }
 
-fn clamp_component(center: f32, grid_extent: f32, view_extent: f32) -> f32 {
-    let half_view = view_extent / 2.0;
-    if grid_extent <= view_extent {
-        grid_extent / 2.0
-    } else {
-        center.clamp(half_view, grid_extent - half_view)
-    }
-}
-
+/// Possible failures when loading a map from disk.
 #[derive(Debug)]
 pub enum MapLoadError {
     Io(io::Error),

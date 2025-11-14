@@ -25,10 +25,10 @@ fn window_conf() -> Conf {
 
 #[macroquad::main(window_conf)]
 async fn main() {
-    let map_dimension = Size { width: 100.0, height: 100.0 };
+    let map_size = Size { width: 20.0, height: 15.0 };
     let tile_size = Size { width: 32.0, height: 32.0 };
+    let mut map = Map::new(map_size, tile_size);
     let asset_catalog = AssetCatalog::load(tile_size).await;
-    let mut map = Map::new(map_dimension, tile_size);
     let mut palette_panel = PalettePanel::new(tile_size);
 
     loop {
@@ -37,8 +37,13 @@ async fn main() {
         draw_text("ForgeTile!", 20.0, 20.0, 30.0, DARKGRAY);
 
         let camera: Camera2D = map.draw();
+        let zoom = map
+            .get_camera_controller()
+            .get_current_zoom();
 
-        let panel_actions = palette_panel.draw(&asset_catalog);
+        draw_text(&format!("Zoom: {:.1}", zoom), 10.0, 20.0, 20.0, WHITE);
+
+        let panel_actions: PanelActions = palette_panel.draw(&asset_catalog);
 
         if is_mouse_button_down(MouseButton::Left) && !palette_panel.pointer_over_ui() {
             if let (Some((tile_x, tile_y)), Some(sprite)) =
@@ -50,24 +55,13 @@ async fn main() {
 
         if panel_actions.save_requested {
             match map.save_to_file("map.json") {
-                Ok(_) => println!("Mapa salvo em map.json"),
-                Err(err) => eprintln!("Erro ao salvar mapa: {err}"),
+                Ok(_) => println!("map.json saved!"),
+                Err(err) => eprintln!("Error saving map: {err}"),
             }
         }
         if panel_actions.load_requested {
             log_map_load_result(map.load_from_file("map.json", &asset_catalog));
         }
-
-        draw_text(
-            &format!(
-                "Zoom: {:.1}x | Controls: +/- to zoom | 0 to reset",
-                map.current_zoom_level()
-            ),
-            10.0,
-            50.0,
-            20.0,
-            WHITE,
-        );
 
         next_frame().await;
     }

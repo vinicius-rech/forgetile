@@ -1,3 +1,3 @@
 pub mod assets;
-mod camera;
+pub mod camera;
 pub mod map;
