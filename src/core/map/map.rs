@@ -33,8 +33,8 @@ struct PaintedTile {
 
 impl Map {
     pub fn new(map_dimension: Size, tile_size: Size) -> Self {
-        let map_width_tiles = dimension_to_tiles(map_dimension.width);
-        let map_height_tiles = dimension_to_tiles(map_dimension.height);
+        let map_width_tiles: usize = dimension_to_tiles(map_dimension.width);
+        let map_height_tiles: usize = dimension_to_tiles(map_dimension.height);
         let tiles = vec![None; map_width_tiles * map_height_tiles];
         let grid_size = vec2(
             map_width_tiles as f32 * tile_size.width,
@@ -70,19 +70,16 @@ impl Map {
     }
 
     pub fn update_zoom(&mut self) {
-        if is_key_pressed(KeyCode::Equal) || is_key_pressed(KeyCode::KpAdd) {
+        if is_key_pressed(KeyCode::Equal) {
             self.zoom_level = (self.zoom_level * 1.2).min(8.0);
-            println!("🔍 ZOOM IN: {:.1}x", self.zoom_level);
         }
 
-        if is_key_pressed(KeyCode::Minus) || is_key_pressed(KeyCode::KpSubtract) {
+        if is_key_pressed(KeyCode::Minus) {
             self.zoom_level = (self.zoom_level / 1.2).max(0.5);
-            println!("🔍 ZOOM OUT: {:.1}x", self.zoom_level);
         }
 
-        if is_key_pressed(KeyCode::Key0) || is_key_pressed(KeyCode::Kp0) {
+        if is_key_pressed(KeyCode::Key0) {
             self.zoom_level = 2.0;
-            println!("🔍 ZOOM RESET: {:.1}x", self.zoom_level);
         }
     }
 
