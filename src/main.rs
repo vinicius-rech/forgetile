@@ -1,13 +1,16 @@
 use crate::core::assets::{AssetCatalog, AssetCategory, TileSprite};
-use crate::core::map::map::Map;
+use crate::core::map::map::{Map, MapLoadError};
 use crate::core::map::tile::Size;
+use image::imageops::FilterType;
 use macroquad::color::{BLACK, DARKGRAY, WHITE};
 use macroquad::input::{MouseButton, is_mouse_button_down, mouse_position};
 use macroquad::math::{Rect, Vec2, vec2};
+use macroquad::miniquad::conf::Icon;
 use macroquad::prelude::{Camera2D, clear_background};
 use macroquad::text::draw_text;
 use macroquad::ui::{Ui, hash, root_ui, widgets};
 use macroquad::window::{Conf, next_frame, screen_height};
+use std::convert::TryInto;
 
 mod core;
 
@@ -15,6 +18,7 @@ fn window_conf() -> Conf {
     Conf {
         window_title: "ForgeTile".into(),
         fullscreen: false,
+        icon: Some(load_app_icon()),
         ..Default::default()
     }
 }
@@ -51,10 +55,7 @@ async fn main() {
             }
         }
         if panel_actions.load_requested {
-            match map.load_from_file("map.json", &asset_catalog) {
-                Ok(_) => println!("Mapa carregado de map.json"),
-                Err(err) => eprintln!("Erro ao carregar mapa: {err}"),
-            }
+            log_map_load_result(map.load_from_file("map.json", &asset_catalog));
         }
 
         draw_text(
@@ -221,4 +222,37 @@ impl PalettePanel {
 struct PanelActions {
     save_requested: bool,
     load_requested: bool,
+}
+
+fn log_map_load_result(result: Result<(), MapLoadError>) {
+    match result {
+        Ok(_) => println!("Mapa carregado de map.json"),
+        Err(err) => eprintln!("Erro ao carregar mapa: {err}"),
+    }
+}
+
+fn load_app_icon() -> Icon {
+    const LOGO_BYTES: &[u8] = include_bytes!("../docs/logo.png");
+    match image::load_from_memory(LOGO_BYTES) {
+        Ok(dynamic) => {
+            let rgba = dynamic.to_rgba8();
+            Icon {
+                small: resize_icon::<16, { 16 * 16 * 4 }>(&rgba),
+                medium: resize_icon::<32, { 32 * 32 * 4 }>(&rgba),
+                big: resize_icon::<64, { 64 * 64 * 4 }>(&rgba),
+            }
+        }
+        Err(err) => {
+            eprintln!("Failed to load window icon, falling back to default: {err}");
+            Icon::miniquad_logo()
+        }
+    }
+}
+
+fn resize_icon<const SIZE: u32, const LEN: usize>(image: &image::RgbaImage) -> [u8; LEN] {
+    let resized = image::imageops::resize(image, SIZE, SIZE, FilterType::CatmullRom);
+    resized
+        .into_raw()
+        .try_into()
+        .unwrap_or_else(|_| panic!("Unexpected icon buffer length for {SIZE}px icon"))
 }

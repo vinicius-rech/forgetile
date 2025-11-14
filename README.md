@@ -4,6 +4,12 @@
 
 ForgeTile is a lightweight 2D tile-map editor powered by [macroquad](https://github.com/not-fl3/macroquad). It reads 32×32 sprites directly from an `assets/` folder located next to the executable, lets you paint tiles on a zoomable grid, and exports/imports maps as JSON.
 
+
+<div align="center">
+  <img src="docs/preview.png" alt="ForgeTile Logo" width="800" />
+</div>
+
+
 ## Prerequisites
 
 - [Rust](https://www.rust-lang.org/tools/install) toolchain (edition 2024, tested with stable)

@@ -107,7 +107,7 @@ impl Map {
 
         let grid_width = self.map_width_tiles as f32 * tile_width;
         let grid_height = self.map_height_tiles as f32 * tile_height;
-        let thickness = 1.0;
+        let thickness = 0.0;
 
         for col in 0..=self.map_width_tiles {
             let x = col as f32 * tile_width;
